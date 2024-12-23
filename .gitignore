@@ -1,0 +1,16 @@
+# Python 虚拟环境
+venv/
+env/
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE 配置文件
+.idea/
+.vscode/
+
+# 系统文件
+.DS_Store
+Thumbs.db 
