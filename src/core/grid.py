@@ -1,3 +1,5 @@
+import numpy as np
+
 class Grid:
     def __init__(self, rows: int, cols: int):
         """初始化点阵"""
