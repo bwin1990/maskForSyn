@@ -1,10 +1,11 @@
 from PyQt6.QtWidgets import (QMainWindow, QToolBar, QPushButton, 
-                            QStatusBar, QMessageBox, QDialog, QLabel)
+                            QStatusBar, QMessageBox, QDialog, QLabel, QHBoxLayout, QWidget, QSizePolicy)
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
 from .grid_view import GridView
 from .grid_size_dialog import GridSizeDialog
 from core.grid import Grid
+from .region_control_panel import RegionControlPanel
 
 class MainWindow(QMainWindow):
     def __init__(self, grid=None, parent=None):
@@ -48,11 +49,28 @@ class MainWindow(QMainWindow):
         self.zoom_label = QLabel("缩放: 1.00x")
         self.statusBar.addPermanentWidget(self.zoom_label)
         
-        # 创建网格视图
-        self.grid_view = GridView(self)
-        self.setCentralWidget(self.grid_view)
+        # 创建主窗口的中心部件
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
         
-        # 连接鼠标位置信号
+        # 创建水平布局
+        main_layout = QHBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)  # 减少边距
+        main_widget.setLayout(main_layout)
+        
+        # 创建并添加GridView
+        self.grid_view = GridView(self)
+        self.grid_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)  # 允许GridView扩展
+        main_layout.addWidget(self.grid_view)
+        
+        # 创建并添加RegionControlPanel
+        self.region_panel = RegionControlPanel()
+        self.region_panel.setFixedWidth(150)  # 固定控制面板宽度
+        main_layout.addWidget(self.region_panel)
+        
+        # 连接信号
+        self.grid_view.region_manager.region_added.connect(self.region_panel.add_region)
+        self.region_panel.region_deleted.connect(self.delete_region)
         self.grid_view.mouse_position_changed.connect(self._update_status_bar)
         
         # 如果提供了grid，则加载它
@@ -102,3 +120,7 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar.showMessage("区域创建已取消")
             self.grid_view.cancel_region_creation()
+    
+    def delete_region(self, name: str):
+        """删除区域"""
+        self.grid_view.delete_region(name)

@@ -1,8 +1,9 @@
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget, QDialog
 from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QBrush
-from PyQt6.QtCore import Qt, QPoint, QRect, pyqtSignal, QPointF
+from PyQt6.QtCore import Qt, QPoint, QRect, QRectF, pyqtSignal, QPointF
 from core.region_manager import RegionManager
 from core.region import Region
+from gui.region_size_dialog import RegionSizeDialog
 
 class GridView(QWidget):
     # 添加信号，用于通知坐标变化
@@ -13,14 +14,15 @@ class GridView(QWidget):
         self.cell_size = 20  # 默认单元格大小
         self.grid = None
         self.offset = QPoint(10, 10)  # 添加边距
-        # 增加更小的缩放级别
+        # 修改缩放级别，添加更小的缩放比例
         self.zoom_levels = [
-            0.01, 0.02, 0.03, 0.05, 0.07,  # 非常小的缩放级别
-            0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.75,  # 小缩放级别
-            1.0,  # 标准大小
-            1.5, 2.0, 2.5, 3.0, 4.0  # 放大级别
+            0.001, 0.002, 0.003, 0.005, 0.007,  # 超小缩放级别
+            0.01, 0.02, 0.03, 0.05, 0.07,       # 很小缩放级别
+            0.1, 0.15, 0.2, 0.3, 0.5, 0.7,      # 小缩放级别
+            1.0,                                 # 标准大小
+            1.5, 2.0                            # 放大级别
         ]
-        self.current_zoom_index = 13  # 默认使用1.0缩放
+        self.current_zoom_index = self.zoom_levels.index(1.0)  # 默认使用1.0缩放
         
         # 鼠标拖动相关
         self.last_mouse_pos = None
@@ -43,12 +45,21 @@ class GridView(QWidget):
         # 添加区域创建相关的状态
         self.is_creating_region = False
         self.current_region = None
+        
+        # 添加鼠标悬停位置属性
+        self.hover_pos = QPoint(-1, -1)  # 初始化为无效位置
+        # 添加上一次悬停位置，用于优化重绘
+        self.last_hover_pos = QPoint(-1, -1)
+        
+        self.dragging_region = None  # 当前正在拖动的区域
+        self.drag_offset = QPointF(0, 0)  # 拖动偏移
     
     @property
     def current_cell_size(self):
-        """计算当前缩放级别下的单元格大小，确保至少为1像素"""
+        """计算当前缩放级别下的单元格大小"""
         size = self.cell_size * self.zoom_levels[self.current_zoom_index]
-        return max(1, int(size))  # 确保最小为1像素
+        # 不再强制最小值为1，而是返回实际计算值
+        return size
         
     def zoom_in(self):
         """放大"""
@@ -105,9 +116,21 @@ class GridView(QWidget):
     def mousePressEvent(self, event):
         """处理鼠标按下事件"""
         if event.button() == Qt.MouseButton.MiddleButton:
+            # 中键平移视图
             self.is_panning = True
             self.last_mouse_pos = event.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        elif event.button() == Qt.MouseButton.LeftButton and self.dragging_region:
+            # 开始拖动区域
+            grid_pos = self.screen_to_grid(event.pos())
+            # 检查是否点击在区域内
+            if self.dragging_region.contains_point(grid_pos):
+                self.drag_offset = grid_pos - self.dragging_region.position
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+            else:
+                # 如果点击在区域外，取消拖动
+                self.dragging_region = None
+                self.setCursor(Qt.CursorShape.ArrowCursor)
         elif self.is_creating_region and event.button() == Qt.MouseButton.LeftButton:
             # 开始创建新区域或添加点到当前区域
             grid_pos = self.screen_to_grid(event.pos())
@@ -138,15 +161,44 @@ class GridView(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton:
             self.is_panning = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
+        elif event.button() == Qt.MouseButton.LeftButton and self.dragging_region:
+            # 完成区域放置
+            self.dragging_region.is_placed = True
+            self.dragging_region = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.update()
     
     def mouseMoveEvent(self, event):
         """处理鼠标移动事件"""
-        # 处理拖动
+        # 处理视图平移
         if self.is_panning and self.last_mouse_pos:
             delta = event.pos() - self.last_mouse_pos
             self.offset += delta
             self.last_mouse_pos = event.pos()
             self.update()
+            return  # 拖动时不处理悬停效果
+        
+        # 处理区域拖动
+        if self.dragging_region:
+            grid_pos = self.screen_to_grid(event.pos())
+            new_pos = grid_pos - self.drag_offset
+            
+            # 计算区域的新位置，确保不会超出网格范围
+            max_x = self.grid.cols - self.dragging_region.size
+            max_y = self.grid.rows - self.dragging_region.size
+            
+            # 限制在网格范围内
+            new_x = max(0, min(max_x, new_pos.x()))
+            new_y = max(0, min(max_y, new_pos.y()))
+            
+            # 更新区域位置
+            self.dragging_region.set_position(QPointF(new_x, new_y))
+            self.update()
+            
+            # 更新状态栏显示当前区域位置
+            position_text = f"区域 {self.dragging_region.name.upper()}: ({int(new_x)}, {int(new_y)})"
+            self.mouse_position_changed.emit(position_text)
+            return
         
         # 更新鼠标位置
         pos = event.pos()
@@ -156,17 +208,41 @@ class GridView(QWidget):
         if (self.grid and 
             0 <= grid_pos.x() < self.grid.cols and 
             0 <= grid_pos.y() < self.grid.rows):
-            position_text = f"({grid_pos.x()}, {grid_pos.y()})"
+            new_hover_pos = QPoint(int(grid_pos.x()), int(grid_pos.y()))
             
-            # 如果正在创建区域，显示当前区域信息
-            if self.is_creating_region and self.current_region:
-                position_text += f" - 区域 {self.current_region.name.upper()}"
-                position_text += f" ({len(self.current_region.points)} 个点)"
+            # 只有当位置改变时才更新
+            if new_hover_pos != self.hover_pos:
+                self.last_hover_pos = self.hover_pos  # 保存旧位置
+                self.hover_pos = new_hover_pos
+                
+                # 计算需要重绘的区域
+                cell_size = self.current_cell_size
+                if cell_size > 2:  # 只在格子足够大时才显示悬停效果
+                    # 重绘旧位置
+                    if self.last_hover_pos != QPoint(-1, -1):
+                        x = int(self.offset.x() + self.last_hover_pos.x() * cell_size)
+                        y = int(self.offset.y() + self.last_hover_pos.y() * cell_size)
+                        self.update(QRect(x, y, int(cell_size), int(cell_size)))
+                    
+                    # 重绘新位置
+                    x = int(self.offset.x() + self.hover_pos.x() * cell_size)
+                    y = int(self.offset.y() + self.hover_pos.y() * cell_size)
+                    self.update(QRect(x, y, int(cell_size), int(cell_size)))
+                
+                # 使用悬停位置更新坐标显示
+                position_text = f"({self.hover_pos.x()}, {self.hover_pos.y()})"
+                self.mouse_position_changed.emit(position_text)
         else:
-            position_text = "(-,-)"
-            
-        # 发送坐标变化信号
-        self.mouse_position_changed.emit(position_text)
+            # 鼠标移出点阵范围时清除悬停效果
+            if self.hover_pos != QPoint(-1, -1):
+                cell_size = self.current_cell_size
+                if cell_size > 2:
+                    x = int(self.offset.x() + self.hover_pos.x() * cell_size)
+                    y = int(self.offset.y() + self.hover_pos.y() * cell_size)
+                    self.update(QRect(x, y, int(cell_size), int(cell_size)))
+                self.hover_pos = QPoint(-1, -1)
+                # 清除坐标显示
+                self.mouse_position_changed.emit("(-,-)")
     
     def screen_to_grid(self, pos):
         """屏幕坐标转网格坐标"""
@@ -207,67 +283,76 @@ class GridView(QWidget):
             return
             
         painter = QPainter(self)
-        
-        # 绘制背景
-        painter.fillRect(self.rect(), QColor(240, 240, 240))
+        rect = event.rect()
+        painter.fillRect(rect, QColor(240, 240, 240))
         
         cell_size = self.current_cell_size
         visible_range = self.get_visible_range()
         
-        # 在极小缩放时（cell_size <= 2）绘制外框
         if cell_size <= 2:
+            # 小缩放比例下的绘制代码
             # 计算整个点阵的边界框
-            left = self.offset.x()
-            top = self.offset.y()
-            width = self.grid.cols * cell_size
-            height = self.grid.rows * cell_size
+            left = int(self.offset.x())
+            top = int(self.offset.y())
+            width = int(self.grid.cols * cell_size)
+            height = int(self.grid.rows * cell_size)
             
             # 绘制边界框
-            painter.setPen(QColor(100, 100, 100))  # 灰色边框
+            painter.setPen(QColor(100, 100, 100))
             painter.drawRect(left, top, width, height)
             
-            # 在边界框内绘制黑点
-            painter.setPen(QColor(0, 0, 0))  # 黑色点
+            # 在边界框内绘制点
             for row in range(visible_range.top(), visible_range.bottom()):
                 for col in range(visible_range.left(), visible_range.right()):
                     if (0 <= row < self.grid.rows and 
                         0 <= col < self.grid.cols and 
                         self.grid.points[row, col] == 1):
-                        x = self.offset.x() + col * cell_size
-                        y = self.offset.y() + row * cell_size
+                        x = int(self.offset.x() + col * cell_size)
+                        y = int(self.offset.y() + row * cell_size)
+                        # 根据缩放比例调整点的透明度
+                        alpha = min(255, int(255 * cell_size))
+                        painter.setPen(QColor(0, 0, 0, alpha))
                         painter.drawPoint(x, y)
         else:
-            # 只在单元格足够大时才绘制网格线
+            # 网格线绘制代码
             if cell_size >= 4:
                 painter.setPen(QColor(200, 200, 200))
                 for row in range(visible_range.top(), visible_range.bottom() + 1):
-                    y = self.offset.y() + row * cell_size
+                    y = int(self.offset.y() + row * cell_size)
                     painter.drawLine(
-                        self.offset.x() + visible_range.left() * cell_size, y,
-                        self.offset.x() + visible_range.right() * cell_size, y
+                        int(self.offset.x() + visible_range.left() * cell_size),
+                        y,
+                        int(self.offset.x() + visible_range.right() * cell_size),
+                        y
                     )
                     
                 for col in range(visible_range.left(), visible_range.right() + 1):
-                    x = self.offset.x() + col * cell_size
+                    x = int(self.offset.x() + col * cell_size)
                     painter.drawLine(
-                        x, self.offset.y() + visible_range.top() * cell_size,
-                        x, self.offset.y() + visible_range.bottom() * cell_size
+                        x,
+                        int(self.offset.y() + visible_range.top() * cell_size),
+                        x,
+                        int(self.offset.y() + visible_range.bottom() * cell_size)
                     )
             
             # 正常绘制点阵
             for row in range(visible_range.top(), visible_range.bottom()):
                 for col in range(visible_range.left(), visible_range.right()):
                     if 0 <= row < self.grid.rows and 0 <= col < self.grid.cols:
-                        x = self.offset.x() + col * cell_size
-                        y = self.offset.y() + row * cell_size
+                        x = int(self.offset.x() + col * cell_size)
+                        y = int(self.offset.y() + row * cell_size)
                         
+                        # 简化悬停效果的判断
+                        is_hover = (col == self.hover_pos.x() and row == self.hover_pos.y())
+                        
+                        # 根据状态设置颜色
                         if self.grid.points[row, col] == 0:
-                            color = QColor(255, 255, 255)
+                            color = QColor(220, 220, 220) if is_hover else QColor(255, 255, 255)
                         else:
-                            color = QColor(0, 0, 0)
+                            color = QColor(50, 50, 50) if is_hover else QColor(0, 0, 0)
                         
                         painter.fillRect(x + 1, y + 1, 
-                                       cell_size - 1, cell_size - 1, color)
+                                       int(cell_size - 1), int(cell_size - 1), color)
         
         # 在高缩放级别下显示坐标
         if self.zoom_levels[self.current_zoom_index] >= 2.0:
@@ -276,14 +361,14 @@ class GridView(QWidget):
             for row in range(visible_range.top() - visible_range.top() % 5, 
                            visible_range.bottom(), 5):
                 if 0 <= row < self.grid.rows:
-                    y = self.offset.y() + row * cell_size
-                    painter.drawText(5, y + cell_size//2, str(row))
+                    y = int(self.offset.y() + row * cell_size)  # 转换为整数
+                    painter.drawText(5, y + int(cell_size / 2), str(row))
             
             for col in range(visible_range.left() - visible_range.left() % 5,
                            visible_range.right(), 5):
                 if 0 <= col < self.grid.cols:
-                    x = self.offset.x() + col * cell_size
-                    painter.drawText(x + cell_size//2, 15, str(col))
+                    x = int(self.offset.x() + col * cell_size)  # 转换为整数
+                    painter.drawText(x + int(cell_size / 2), 15, str(col))
         
         # 绘制区域
         if cell_size > 2:  # 只在足够大时绘制区域
@@ -291,88 +376,33 @@ class GridView(QWidget):
             
             # 先绘制已完成的区域
             for name, region in self.region_manager.regions.items():
-                if region.is_closed:
+                if region.is_placed:  # 修改这里，使用 is_placed 替代 is_closed
                     self._draw_region(painter, region)
             
-            # 绘制正在创建的区域
-            if self.is_creating_region and self.current_region:
-                self._draw_region(painter, self.current_region, True)
+            # 绘制正在拖动的区域
+            if self.dragging_region:
+                self._draw_region(painter, self.dragging_region)
     
-    def _draw_region(self, painter: QPainter, region: Region, is_creating: bool = False):
-        """绘制单个区域"""
-        if len(region.points) == 0:
-            return
-            
-        # 创建路径
-        path = QPainterPath()
-        first_point = self.grid_to_screen(region.points[0])
-        path.moveTo(first_point)
+    def _draw_region(self, painter: QPainter, region: Region):
+        """绘制区域"""
+        rect = region.get_rect()
+        screen_rect = QRectF(
+            self.grid_to_screen(rect.topLeft()),
+            self.grid_to_screen(rect.bottomRight())
+        )
         
-        # 计算区域中心点
-        sum_x = sum(point.x() for point in region.points)
-        sum_y = sum(point.y() for point in region.points)
-        center = QPointF(sum_x / len(region.points), sum_y / len(region.points))
-        center_screen = self.grid_to_screen(center)
-        
-        # 添加所有点
-        for point in region.points[1:]:
-            screen_point = self.grid_to_screen(point)
-            path.lineTo(screen_point)
-        
-        # 如果区域已关闭或正在创建，连接到鼠标位置
-        if region.is_closed:
-            path.closeSubpath()
-        elif is_creating:
-            # 连接到鼠标当前位置
-            mouse_pos = QPointF(self.mapFromGlobal(self.cursor().pos()))
-            path.lineTo(mouse_pos)
-            if len(region.points) >= 3:
-                # 显示可能的闭合路径
-                path.lineTo(first_point)
-        
-        # 绘制填充
-        painter.fillPath(path, region.color)
+        # 绘制半透明填充
+        painter.fillRect(screen_rect, region.color)
         
         # 绘制边框
-        pen = QPen(region.color.darker(150), 2)
-        painter.setPen(pen)
-        painter.drawPath(path)
+        painter.setPen(QPen(region.color.darker(150), 2))
+        painter.drawRect(screen_rect)
         
-        # 绘制顶点
-        vertex_pen = QPen(Qt.GlobalColor.white, 1)
-        vertex_brush = QBrush(region.color.darker(150))
-        painter.setPen(vertex_pen)
-        painter.setBrush(vertex_brush)
-        for point in region.points:
-            screen_point = self.grid_to_screen(point)
-            painter.drawEllipse(screen_point, 4, 4)
-        
-        # 只在区域完成时才在中心绘制区域名称
-        if region.is_closed:
-            # 设置文本样式
-            font = painter.font()
-            font.setBold(True)  # 加粗
-            font.setPointSize(12)  # 设置字体大小
-            painter.setFont(font)
-            
-            # 计算文本矩形
-            text = region.name.upper()
-            text_rect = painter.fontMetrics().boundingRect(text)
-            
-            # 计算文本位置（居中）
-            text_point = QPoint(
-                int(center_screen.x() - text_rect.width() / 2),
-                int(center_screen.y() + text_rect.height() / 2)
-            )
-            
-            # 绘制白色背景（可选）
-            background_rect = text_rect.translated(text_point)
-            background_rect.adjust(-2, -2, 2, 2)  # 稍微扩大背景区域
-            painter.fillRect(background_rect, Qt.GlobalColor.white)
-            
-            # 绘制文本
-            painter.setPen(region.color.darker(150))
-            painter.drawText(text_point, text)
+        # 绘制区域名称
+        font = painter.font()
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(screen_rect, Qt.AlignmentFlag.AlignCenter, region.name.upper())
     
     def keyPressEvent(self, event):
         """处理键盘按键事件"""
@@ -386,7 +416,8 @@ class GridView(QWidget):
             self.zoom_in()
             # 调整偏移，使得鼠标下的网格点保持不变
             new_pos = self.grid_to_screen(old_pos)
-            delta = mouse_pos - new_pos
+            # 将 QPointF 转换为 QPoint 进行运算
+            delta = mouse_pos - QPoint(int(new_pos.x()), int(new_pos.y()))
             self.offset += delta
             
         elif event.key() == Qt.Key.Key_Minus:  # 减号键缩小
@@ -395,7 +426,8 @@ class GridView(QWidget):
             self.zoom_out()
             # 调整偏移，使得鼠标下的网格点保持不变
             new_pos = self.grid_to_screen(old_pos)
-            delta = mouse_pos - new_pos
+            # 将 QPointF 转换为 QPoint 进行运算
+            delta = mouse_pos - QPoint(int(new_pos.x()), int(new_pos.y()))
             self.offset += delta
         
         # 方向键移动
@@ -434,14 +466,34 @@ class GridView(QWidget):
     
     def start_region_creation(self):
         """开始创建区域"""
-        self.is_creating_region = True
-        self.current_region = None  # 等待第一次点击时创建
-        self.setCursor(Qt.CursorShape.CrossCursor)  # 改变鼠标样式
+        dialog = RegionSizeDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            size = dialog.get_size()
+            # 创建新区域并放置在视图中心
+            region = self.region_manager.create_region(size)
+            center = self.rect().center()
+            grid_pos = self.screen_to_grid(center)
+            region.set_position(QPointF(grid_pos.x() - size/2, grid_pos.y() - size/2))
+            self.dragging_region = region
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
+            self.update()
     
     def cancel_region_creation(self):
         """取消区域创建"""
-        if self.is_creating_region:
-            self.is_creating_region = False
-            self.current_region = None
+        if self.dragging_region:
+            name = self.dragging_region.name
+            self.region_manager.remove_region(name)
+            self.dragging_region = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.update()
+    
+    def delete_region(self, name: str):
+        """删除区域"""
+        if name in self.region_manager.regions:
+            # 如果正在拖动这个区域，取消拖动
+            if self.dragging_region and self.dragging_region.name == name:
+                self.dragging_region = None
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            # 从管理器中删除区域
+            self.region_manager.remove_region(name)
             self.update()

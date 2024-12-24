@@ -1,42 +1,47 @@
-from typing import List, Dict
+from typing import Dict
 from .region import Region
-import numpy as np
-import string
 from PyQt6.QtGui import QColor
+from PyQt6.QtCore import pyqtSignal, QObject
 
-class RegionManager:
+class RegionManager(QObject):
     """区域管理器"""
+    # 添加信号
+    region_added = pyqtSignal(str)  # 发送新添加的区域名称
+    
     def __init__(self):
-        self.regions: Dict[str, Region] = {}  # 区域字典
-        self._next_name = 0  # 下一个区域名称的索引
-        self._colors = self._generate_colors(26)  # 生成26种颜色
+        super().__init__()  # 调用父类初始化
+        self.regions: Dict[str, Region] = {}
+        self.next_name = 'a'  # 下一个可用的区域名称
         
-    def _generate_colors(self, count: int) -> List[QColor]:
-        """生成不同的颜色"""
-        colors = []
-        for i in range(count):
-            hue = (i * 137.508) % 360  # 使用黄金角来生成分散的颜色
-            color = QColor.fromHsv(int(hue), 200, 255, 127)  # 半透明色
-            colors.append(color)
-        return colors
-        
-    def create_region(self) -> Region:
+    def create_region(self, size: int) -> Region:
         """创建新区域"""
-        if self._next_name >= 26:
-            raise ValueError("已达到最大区域数量限制(26)")
-            
-        name = string.ascii_lowercase[self._next_name]
-        region = Region(name)
-        region.color = self._colors[self._next_name]
-        self.regions[name] = region
-        self._next_name += 1
-        return region
+        # 创建新区域
+        region = Region(self.next_name, size)  # 传入 size 参数
         
-    def get_combined_mask(self, rows: int, cols: int) -> np.ndarray:
-        """获取所有区域的组合mask"""
-        combined = np.zeros((rows, cols), dtype=np.uint8)
-        for name, region in self.regions.items():
-            mask = region.get_mask(rows, cols)
-            # 使用区域索引+1作为mask值
-            combined[mask] = ord(name) - ord('a') + 1
-        return combined 
+        # 设置区域颜色
+        color = QColor()
+        color.setHsv(
+            (ord(self.next_name) - ord('a')) * 30 % 360,  # 色相
+            100,  # 饱和度
+            200   # 明度
+        )
+        color.setAlpha(100)  # 设置透明度
+        region.color = color
+        
+        # 保存区域
+        self.regions[self.next_name] = region
+        
+        # 发送信号
+        self.region_added.emit(self.next_name)
+        
+        # 更新下一个可用名称
+        self.next_name = chr(ord(self.next_name) + 1)
+        if self.next_name > 'z':
+            self.next_name = 'a'
+            
+        return region
+    
+    def remove_region(self, name: str):
+        """删除区域"""
+        if name in self.regions:
+            del self.regions[name] 

@@ -13,7 +13,7 @@ class GridSizeDialog(QDialog):
         row_layout = QHBoxLayout()
         row_label = QLabel("行数:")
         self.row_spinbox = QSpinBox()
-        self.row_spinbox.setRange(1, 1000)  # 设置范围
+        self.row_spinbox.setRange(1, 2000)  # 增大范围以适应更大的点阵
         self.row_spinbox.setValue(318)  # 默认23k芯片的行数
         row_layout.addWidget(row_label)
         row_layout.addWidget(self.row_spinbox)
@@ -22,7 +22,7 @@ class GridSizeDialog(QDialog):
         col_layout = QHBoxLayout()
         col_label = QLabel("列数:")
         self.col_spinbox = QSpinBox()
-        self.col_spinbox.setRange(1, 1000)
+        self.col_spinbox.setRange(1, 2000)  # 增大范围以适应更大的点阵
         self.col_spinbox.setValue(74)  # 默认23k芯片的列数
         col_layout.addWidget(col_label)
         col_layout.addWidget(self.col_spinbox)
@@ -30,7 +30,7 @@ class GridSizeDialog(QDialog):
         # 预设按钮
         preset_layout = QHBoxLayout()
         btn_23k = QPushButton("23k (318×74)")
-        btn_680k = QPushButton("680k (1000×680)")
+        btn_680k = QPushButton("680k (636×1080)")  # 修改680k的预设值
         preset_layout.addWidget(btn_23k)
         preset_layout.addWidget(btn_680k)
         
@@ -53,7 +53,7 @@ class GridSizeDialog(QDialog):
         ok_button.clicked.connect(self.accept)
         cancel_button.clicked.connect(self.reject)
         btn_23k.clicked.connect(lambda: self.set_preset(318, 74))
-        btn_680k.clicked.connect(lambda: self.set_preset(1000, 680))
+        btn_680k.clicked.connect(lambda: self.set_preset(636, 1080))  # 修改680k的预设值
     
     def set_preset(self, rows, cols):
         """设置预设值"""
