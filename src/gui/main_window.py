@@ -22,6 +22,15 @@ class MainWindow(QMainWindow):
         
         toolbar.addSeparator()  # 添加分隔符
         
+        # 添加区域操作按钮
+        create_region_action = QAction("创建区域", self)
+        create_region_action.setCheckable(True)  # 使按钮可切换
+        create_region_action.triggered.connect(self._toggle_region_creation)
+        toolbar.addAction(create_region_action)
+        self.create_region_action = create_region_action
+        
+        toolbar.addSeparator()  # 添加分隔符
+        
         # 添加缩放按钮
         zoom_in_action = QAction("放大", self)
         zoom_in_action.triggered.connect(self._zoom_in)
@@ -84,3 +93,12 @@ class MainWindow(QMainWindow):
                 self.statusBar.showMessage(f"已创建 {rows}×{cols} 的点阵", 3000)
             except Exception as e:
                 QMessageBox.warning(self, "错误", f"创建点阵失败: {str(e)}")
+    
+    def _toggle_region_creation(self, checked: bool):
+        """切换区域创建模式"""
+        if checked:
+            self.statusBar.showMessage("左键点击添加顶点，右键完成区域创建")
+            self.grid_view.start_region_creation()
+        else:
+            self.statusBar.showMessage("区域创建已取消")
+            self.grid_view.cancel_region_creation()
