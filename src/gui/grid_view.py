@@ -168,14 +168,14 @@ class GridView(QWidget):
             self.is_panning = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
         elif event.button() == Qt.MouseButton.LeftButton and self.dragging_region:
-            # 检查位置是否有效
+            # 先检查位置是否有效，再决定是否保留
             if self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
                 # 位置有效，完成放置
                 self.dragging_region.is_placed = True
                 self.dragging_region = None
                 self.setCursor(Qt.CursorShape.ArrowCursor)
             else:
-                # 位置无效，删除区域
+                # 位置无效，立即删除区域
                 name = self.dragging_region.name
                 self.region_manager.remove_region(name)
                 self.dragging_region = None
@@ -196,19 +196,23 @@ class GridView(QWidget):
         # 处理区域拖动
         if self.dragging_region:
             grid_pos = self.screen_to_grid(event.pos())
-            # 计算新的中心位置
-            center_x = grid_pos.x() - self.drag_offset.x()
-            center_y = grid_pos.y() - self.drag_offset.y()
+            # 计算新的中心位置（使用floor取整）
+            center_x = int(grid_pos.x() - self.drag_offset.x())
+            center_y = int(grid_pos.y() - self.drag_offset.y())
             
-            # 从中心位置计算左上角位置
-            new_x = center_x - self.dragging_region.size / 2
-            new_y = center_y - self.dragging_region.size / 2
+            # 从中心位置计算左上角位置（使用floor取整）
+            new_x = int(center_x - self.dragging_region.size / 2)
+            new_y = int(center_y - self.dragging_region.size / 2)
             
-            # 限制在网格范围内
-            new_x = max(0, min(self.grid.cols - self.dragging_region.size, new_x))
-            new_y = max(0, min(self.grid.rows - self.dragging_region.size, new_y))
+            # 限制在网格范围内（使用严格的边界检查）
+            max_x = int(self.grid.cols - self.dragging_region.size)  # 确保是整数
+            max_y = int(self.grid.rows - self.dragging_region.size)  # 确保是整数
             
-            # 更新区域位置
+            # 使用floor取整确保不会超出边界
+            new_x = max(0, min(max_x, new_x))
+            new_y = max(0, min(max_y, new_y))
+            
+            # 更新区域位置（使用整数坐标）
             self.dragging_region.set_position(QPointF(new_x, new_y))
             
             # 检查位置是否有效
@@ -335,7 +339,7 @@ class GridView(QWidget):
                         self.grid.points[row, col] == 1):
                         x = int(self.offset.x() + col * cell_size)
                         y = int(self.offset.y() + row * cell_size)
-                        # 根据缩放比例调整点的透明度
+                        # 根据缩放比例调整点的透明��
                         alpha = min(255, int(255 * cell_size))
                         painter.setPen(QColor(0, 0, 0, alpha))
                         painter.drawPoint(x, y)
@@ -343,27 +347,31 @@ class GridView(QWidget):
             # 网格线绘制代码
             if cell_size >= 4:
                 painter.setPen(QColor(200, 200, 200))
+                # 绘制水平网格线
                 for row in range(visible_range.top(), visible_range.bottom() + 1):
-                    y = int(self.offset.y() + row * cell_size)
-                    painter.drawLine(
-                        int(self.offset.x() + visible_range.left() * cell_size),
-                        y,
-                        int(self.offset.x() + visible_range.right() * cell_size),
-                        y
-                    )
-                    
+                    if row <= self.grid.rows:  # 修改条件，包含最后一行
+                        y = int(self.offset.y() + row * cell_size)
+                        painter.drawLine(
+                            int(self.offset.x() + visible_range.left() * cell_size),
+                            y,
+                            int(self.offset.x() + (visible_range.right() + 1) * cell_size),  # 修改这里，确保线段长度一致
+                            y
+                        )
+                
+                # 绘制垂直网格线
                 for col in range(visible_range.left(), visible_range.right() + 1):
-                    x = int(self.offset.x() + col * cell_size)
-                    painter.drawLine(
-                        x,
-                        int(self.offset.y() + visible_range.top() * cell_size),
-                        x,
-                        int(self.offset.y() + visible_range.bottom() * cell_size)
-                    )
+                    if col <= self.grid.cols:  # 修改条件，包含最后一列
+                        x = int(self.offset.x() + col * cell_size)
+                        painter.drawLine(
+                            x,
+                            int(self.offset.y() + visible_range.top() * cell_size),
+                            x,
+                            int(self.offset.y() + (visible_range.bottom() + 1) * cell_size)  # 修改这里，确保线段长度一致
+                        )
             
             # 正常绘制点阵
-            for row in range(visible_range.top(), visible_range.bottom()):
-                for col in range(visible_range.left(), visible_range.right()):
+            for row in range(visible_range.top(), visible_range.bottom() + 1):
+                for col in range(visible_range.left(), visible_range.right() + 1):
                     if 0 <= row < self.grid.rows and 0 <= col < self.grid.cols:
                         x = int(self.offset.x() + col * cell_size)
                         y = int(self.offset.y() + row * cell_size)
@@ -402,14 +410,19 @@ class GridView(QWidget):
             
             # 先绘制已完成的区域
             for name, region in self.region_manager.regions.items():
-                if region.is_placed and region.is_valid_position(self.grid.cols, self.grid.rows):
-                    self._draw_region(painter, region)
+                # 只绘制已放置且位置有效的区域
+                if region.is_placed:
+                    if region.is_valid_position(self.grid.cols, self.grid.rows):
+                        self._draw_region(painter, region)
+                    else:
+                        # 如果发现已放置的区域位置无效，立即删除
+                        self.region_manager.remove_region(name)
+                        continue
             
             # 绘制正在拖动的区域
             if self.dragging_region:
-                self._draw_region(painter, self.dragging_region, 
-                                is_invalid=not self.dragging_region.is_valid_position(
-                                    self.grid.cols, self.grid.rows))
+                is_invalid = not self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows)
+                self._draw_region(painter, self.dragging_region, is_invalid=is_invalid)
     
     def _draw_region(self, painter: QPainter, region: Region, is_invalid: bool = False):
         """绘制区域"""
