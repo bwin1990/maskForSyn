@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QDialog
+from PyQt6.QtWidgets import QWidget, QDialog, QMessageBox
 from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QBrush
 from PyQt6.QtCore import Qt, QPoint, QRect, QRectF, pyqtSignal, QPointF
 from core.region_manager import RegionManager
@@ -116,7 +116,6 @@ class GridView(QWidget):
     def mousePressEvent(self, event):
         """处理鼠标按下事件"""
         if event.button() == Qt.MouseButton.MiddleButton:
-            # 中键平移视图
             self.is_panning = True
             self.last_mouse_pos = event.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
@@ -125,7 +124,14 @@ class GridView(QWidget):
             grid_pos = self.screen_to_grid(event.pos())
             # 检查是否点击在区域内
             if self.dragging_region.contains_point(grid_pos):
-                self.drag_offset = grid_pos - self.dragging_region.position
+                # 计算区域中心点
+                region_center = QPointF(
+                    self.dragging_region.position.x() + self.dragging_region.size / 2,
+                    self.dragging_region.position.y() + self.dragging_region.size / 2
+                )
+                # 计算鼠标点击位置相对于区域中心的偏移
+                self.drag_offset = QPointF(grid_pos.x() - region_center.x(),
+                                         grid_pos.y() - region_center.y())
                 self.setCursor(Qt.CursorShape.SizeAllCursor)
             else:
                 # 如果点击在区域外，取消拖动
@@ -162,10 +168,19 @@ class GridView(QWidget):
             self.is_panning = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
         elif event.button() == Qt.MouseButton.LeftButton and self.dragging_region:
-            # 完成区域放置
-            self.dragging_region.is_placed = True
-            self.dragging_region = None
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            # 检查位置是否有效
+            if self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
+                # 位置有效，完成放置
+                self.dragging_region.is_placed = True
+                self.dragging_region = None
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            else:
+                # 位置无效，删除区域
+                name = self.dragging_region.name
+                self.region_manager.remove_region(name)
+                self.dragging_region = None
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+                QMessageBox.warning(self, "错误", "区域位置无效，已删除")
             self.update()
     
     def mouseMoveEvent(self, event):
@@ -181,22 +196,33 @@ class GridView(QWidget):
         # 处理区域拖动
         if self.dragging_region:
             grid_pos = self.screen_to_grid(event.pos())
-            new_pos = grid_pos - self.drag_offset
+            # 计算新的中心位置
+            center_x = grid_pos.x() - self.drag_offset.x()
+            center_y = grid_pos.y() - self.drag_offset.y()
             
-            # 计算区域的新位置，确保不会超出网格范围
-            max_x = self.grid.cols - self.dragging_region.size
-            max_y = self.grid.rows - self.dragging_region.size
+            # 从中心位置计算左上角位置
+            new_x = center_x - self.dragging_region.size / 2
+            new_y = center_y - self.dragging_region.size / 2
             
             # 限制在网格范围内
-            new_x = max(0, min(max_x, new_pos.x()))
-            new_y = max(0, min(max_y, new_pos.y()))
+            new_x = max(0, min(self.grid.cols - self.dragging_region.size, new_x))
+            new_y = max(0, min(self.grid.rows - self.dragging_region.size, new_y))
             
             # 更新区域位置
             self.dragging_region.set_position(QPointF(new_x, new_y))
+            
+            # 检查位置是否有效
+            if self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ForbiddenCursor)
+            
             self.update()
             
             # 更新状态栏显示当前区域位置
             position_text = f"区域 {self.dragging_region.name.upper()}: ({int(new_x)}, {int(new_y)})"
+            if not self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
+                position_text += " - 位置无效"
             self.mouse_position_changed.emit(position_text)
             return
         
@@ -372,18 +398,20 @@ class GridView(QWidget):
         
         # 绘制区域
         if cell_size > 2:  # 只在足够大时绘制区域
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)  # 添加抗锯齿
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             
             # 先绘制已完成的区域
             for name, region in self.region_manager.regions.items():
-                if region.is_placed:  # 修改这里，使用 is_placed 替代 is_closed
+                if region.is_placed and region.is_valid_position(self.grid.cols, self.grid.rows):
                     self._draw_region(painter, region)
             
             # 绘制正在拖动的区域
             if self.dragging_region:
-                self._draw_region(painter, self.dragging_region)
+                self._draw_region(painter, self.dragging_region, 
+                                is_invalid=not self.dragging_region.is_valid_position(
+                                    self.grid.cols, self.grid.rows))
     
-    def _draw_region(self, painter: QPainter, region: Region):
+    def _draw_region(self, painter: QPainter, region: Region, is_invalid: bool = False):
         """绘制区域"""
         rect = region.get_rect()
         screen_rect = QRectF(
@@ -391,11 +419,16 @@ class GridView(QWidget):
             self.grid_to_screen(rect.bottomRight())
         )
         
+        # 根据是否有效设置颜色
+        color = region.color
+        if is_invalid:
+            color = QColor(255, 0, 0, 100)  # 无效位置显示红色
+        
         # 绘制半透明填充
-        painter.fillRect(screen_rect, region.color)
+        painter.fillRect(screen_rect, color)
         
         # 绘制边框
-        painter.setPen(QPen(region.color.darker(150), 2))
+        painter.setPen(QPen(color.darker(150), 2))
         painter.drawRect(screen_rect)
         
         # 绘制区域名称
@@ -466,17 +499,23 @@ class GridView(QWidget):
     
     def start_region_creation(self):
         """开始创建区域"""
-        dialog = RegionSizeDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            size = dialog.get_size()
-            # 创建新区域并放置在视图中心
-            region = self.region_manager.create_region(size)
-            center = self.rect().center()
-            grid_pos = self.screen_to_grid(center)
-            region.set_position(QPointF(grid_pos.x() - size/2, grid_pos.y() - size/2))
-            self.dragging_region = region
-            self.setCursor(Qt.CursorShape.SizeAllCursor)
-            self.update()
+        try:
+            dialog = RegionSizeDialog(self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                size = dialog.get_size()
+                # 创建新区域并放置在视图中心
+                region = self.region_manager.create_region(size)
+                center = self.rect().center()
+                grid_pos = self.screen_to_grid(center)
+                region.set_position(QPointF(grid_pos.x() - size/2, grid_pos.y() - size/2))
+                self.dragging_region = region
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+                self.update()
+        except ValueError as e:
+            QMessageBox.warning(self, "错误", str(e))
+            # 取消工具栏按钮的选中状态
+            if isinstance(self.parent(), QMainWindow):
+                self.parent().create_region_action.setChecked(False)
     
     def cancel_region_creation(self):
         """取消区域创建"""

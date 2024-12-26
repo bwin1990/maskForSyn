@@ -115,8 +115,12 @@ class MainWindow(QMainWindow):
     def _toggle_region_creation(self, checked: bool):
         """切换区域创建模式"""
         if checked:
-            self.statusBar.showMessage("左键点击添加顶点，右键完成区域创建")
-            self.grid_view.start_region_creation()
+            try:
+                self.statusBar.showMessage("左键点击添加顶点，右键完成区域创建")
+                self.grid_view.start_region_creation()
+            except ValueError as e:
+                QMessageBox.warning(self, "错误", str(e))
+                self.create_region_action.setChecked(False)
         else:
             self.statusBar.showMessage("区域创建已取消")
             self.grid_view.cancel_region_creation()

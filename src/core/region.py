@@ -24,3 +24,8 @@ class Region:
     def contains_point(self, point: QPointF) -> bool:
         """检查点是否在区域内"""
         return self.get_rect().contains(point) 
+    
+    def is_valid_position(self, grid_cols: int, grid_rows: int) -> bool:
+        """检查区域位置是否有效（完全在点阵范围内）"""
+        return (0 <= self.position.x() <= grid_cols - self.size and 
+                0 <= self.position.y() <= grid_rows - self.size) 
