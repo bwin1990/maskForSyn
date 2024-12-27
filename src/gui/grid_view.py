@@ -196,21 +196,22 @@ class GridView(QWidget):
         # 处理区域拖动
         if self.dragging_region:
             grid_pos = self.screen_to_grid(event.pos())
-            # 计算新的中心位置（使用floor取整）
-            center_x = int(grid_pos.x() - self.drag_offset.x())
-            center_y = int(grid_pos.y() - self.drag_offset.y())
+            # 计算新的中心位置（取整到最近的整数）
+            center_x = round(grid_pos.x() - self.drag_offset.x())
+            center_y = round(grid_pos.y() - self.drag_offset.y())
             
-            # 从中心位置计算左上角位置（使用floor取整）
-            new_x = int(center_x - self.dragging_region.size / 2)
-            new_y = int(center_y - self.dragging_region.size / 2)
+            # 从中心位置计算左上角位置
+            # 由于分割框大小是整数，我们需要确保左上角坐标也是整数
+            new_x = round(center_x - self.dragging_region.size / 2)
+            new_y = round(center_y - self.dragging_region.size / 2)
             
-            # 限制在网格范围内（使用严格的边界检查）
-            max_x = int(self.grid.cols - self.dragging_region.size)  # 确保是整数
-            max_y = int(self.grid.rows - self.dragging_region.size)  # 确保是整数
+            # 限制在网格范围内
+            max_x = self.grid.cols - self.dragging_region.size
+            max_y = self.grid.rows - self.dragging_region.size
             
-            # 使用floor取整确保不会超出边界
-            new_x = max(0, min(max_x, new_x))
-            new_y = max(0, min(max_y, new_y))
+            # 确保位置是整数
+            new_x = max(0, min(int(max_x), int(new_x)))
+            new_y = max(0, min(int(max_y), int(new_y)))
             
             # 更新区域位置（使用整数坐标）
             self.dragging_region.set_position(QPointF(new_x, new_y))
@@ -339,7 +340,7 @@ class GridView(QWidget):
                         self.grid.points[row, col] == 1):
                         x = int(self.offset.x() + col * cell_size)
                         y = int(self.offset.y() + row * cell_size)
-                        # 根据缩放比例调整点的透明��
+                        # 根据缩放比例调整点的透明度
                         alpha = min(255, int(255 * cell_size))
                         painter.setPen(QColor(0, 0, 0, alpha))
                         painter.drawPoint(x, y)
