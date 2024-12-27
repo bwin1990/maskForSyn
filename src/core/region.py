@@ -42,3 +42,12 @@ class Region:
             return False
         
         return True 
+    
+    def intersects_with(self, other: 'Region') -> bool:
+        """检查是否与其他区域重叠"""
+        # 获取两个区域的矩形
+        rect1 = self.get_rect()
+        rect2 = other.get_rect()
+        
+        # 检查是否重叠
+        return rect1.intersects(rect2) 

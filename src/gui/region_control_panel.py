@@ -46,47 +46,75 @@ class RegionControlPanel(QWidget):
     
     def add_region(self, name: str):
         """添加新的区域按钮"""
+        # 检查区域名称是否已存在,避免重复添加
         if name in self.region_buttons:
             return
             
-        # 创建按钮组
+        # 创建一个新的widget作为按钮组的容器
         button_widget = QWidget()
+        # 创建水平布局来放置按钮
         layout = QHBoxLayout()
+        # 设置布局的边距为0,使按钮紧凑排列
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # 区域选择按钮
+        # 创建区域选择按钮,显示大写的区域名称
         select_btn = QPushButton(name.upper())
+        # 设置按钮固定高度为30像素
         select_btn.setFixedHeight(30)
+        # 连接按钮点击信号,发送区域选中信号
         select_btn.clicked.connect(lambda: self.region_selected.emit(name))
         
-        # 删除按钮
+        # 创建删除按钮,使用×符号
         delete_btn = QPushButton("×")
+        # 设置删除按钮为固定大小30x30像素
         delete_btn.setFixedSize(30, 30)
+        # 连接删除按钮的点击信号到delete_region方法
         delete_btn.clicked.connect(lambda: self.delete_region(name))
         
+        # 将两个按钮添加到水平布局中
         layout.addWidget(select_btn)
         layout.addWidget(delete_btn)
+        # 设置按钮组容器的布局
         button_widget.setLayout(layout)
         
-        # 保存按钮引用
+        # 将按钮组widget保存到字典中以便后续管理
         self.region_buttons[name] = button_widget
         
-        # 添加到容器
+        # 将按钮组添加到主容器的布局中
         self.container_layout.addWidget(button_widget)
     
     def delete_region(self, name: str):
         """删除区域按钮"""
+        # 检查要删除的区域是否存在
         if name in self.region_buttons:
-            # 移除按钮组件
+            # 获取对应的按钮组件
             button_widget = self.region_buttons[name]
+            # 从容器布局中移除按钮组
             self.container_layout.removeWidget(button_widget)
+            # 调用deleteLater()延迟删除组件
             button_widget.deleteLater()
+            # 从按钮字典中删除记录
             del self.region_buttons[name]
-            # 发送删除信号
+            # 发送区域删除信号
             self.region_deleted.emit(name)
     
     def clear(self):
         """清除所有按钮"""
+        # 遍历所有按钮组件并删除
         for button_widget in self.region_buttons.values():
             button_widget.deleteLater()
+        # 清空按钮字典
         self.region_buttons.clear() 
+    
+    def remove_region(self, name: str):
+        """从控制面板中移除区域"""
+        # 检查要删除的区域是否存在于按钮字典中
+        if name in self.region_buttons:
+            # 获取对应的按钮组件
+            button_widget = self.region_buttons[name]
+            # 从容器布局中移除按钮组
+            self.container_layout.removeWidget(button_widget)
+            # 删除按钮组件
+            button_widget.deleteLater()
+            # 从按钮字典中删除记录
+            del self.region_buttons[name]

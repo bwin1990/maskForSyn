@@ -2,8 +2,8 @@ from PyQt6.QtWidgets import (QMainWindow, QToolBar, QPushButton,
                             QStatusBar, QMessageBox, QDialog, QLabel, QHBoxLayout, QWidget, QSizePolicy)
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
-from .grid_view import GridView
-from .grid_size_dialog import GridSizeDialog
+from gui.grid_view import GridView
+from gui.grid_size_dialog import GridSizeDialog
 from core.grid import Grid
 from .region_control_panel import RegionControlPanel
 
@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
         
         # 连接信号
         self.grid_view.region_manager.region_added.connect(self.region_panel.add_region)
+        self.grid_view.region_manager.region_removed.connect(self.region_panel.remove_region)
         self.region_panel.region_deleted.connect(self.delete_region)
         self.grid_view.mouse_position_changed.connect(self._update_status_bar)
         
@@ -116,13 +117,11 @@ class MainWindow(QMainWindow):
         """切换区域创建模式"""
         if checked:
             try:
-                self.statusBar.showMessage("左键点击添加顶点，右键完成区域创建")
                 self.grid_view.start_region_creation()
             except ValueError as e:
                 QMessageBox.warning(self, "错误", str(e))
                 self.create_region_action.setChecked(False)
         else:
-            self.statusBar.showMessage("区域创建已取消")
             self.grid_view.cancel_region_creation()
     
     def delete_region(self, name: str):

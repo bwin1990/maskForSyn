@@ -7,6 +7,7 @@ class RegionManager(QObject):
     """区域管理器"""
     # 添加信号
     region_added = pyqtSignal(str)  # 发送新添加的区域名称
+    region_removed = pyqtSignal(str)  # 新增：发送被删除的区域名称
     
     def __init__(self):
         super().__init__()  # 调用父类初始化
@@ -20,11 +21,12 @@ class RegionManager(QObject):
         if len(self.regions) >= 26:
             raise ValueError("已达到最大区域数量限制(26个)")
             
-        # 寻找下一个可用名称
-        while self.next_name in self.used_names:  # 使用used_names而不是regions
-            self.next_name = chr(ord(self.next_name) + 1)
-            if self.next_name > 'z':
-                self.next_name = 'a'
+        # 寻找最小的未使用名称
+        for c in range(ord('a'), ord('z') + 1):
+            name = chr(c)
+            if name not in self.used_names:
+                self.next_name = name
+                break
         
         # 创建新区域
         region = Region(self.next_name, size)
@@ -46,11 +48,6 @@ class RegionManager(QObject):
         # 发送信号
         self.region_added.emit(self.next_name)
         
-        # 更新下一个可用名称
-        self.next_name = chr(ord(self.next_name) + 1)
-        if self.next_name > 'z':
-            self.next_name = 'a'
-            
         return region
     
     def remove_region(self, name: str):
@@ -58,3 +55,12 @@ class RegionManager(QObject):
         if name in self.regions:
             del self.regions[name]
             self.used_names.remove(name)  # 从已使用名称集合中移除 
+            self.region_removed.emit(name)  # 发送区域删除信号
+    
+    def check_overlap(self, region: Region) -> bool:
+        """检查区域是否与已有区域重叠"""
+        for existing_region in self.regions.values():
+            if existing_region != region and existing_region.is_placed:
+                if region.intersects_with(existing_region):
+                    return True
+        return False 

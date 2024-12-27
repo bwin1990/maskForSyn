@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QDialog, QMessageBox
+from PyQt6.QtWidgets import (QWidget, QDialog, QMessageBox, 
+                            QMainWindow)
 from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QBrush
 from PyQt6.QtCore import Qt, QPoint, QRect, QRectF, pyqtSignal, QPointF
 from core.region_manager import RegionManager
@@ -168,19 +169,35 @@ class GridView(QWidget):
             self.is_panning = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
         elif event.button() == Qt.MouseButton.LeftButton and self.dragging_region:
-            # 先检查位置是否有效，再决定是否保留
+            # 先检查位置是否有效
             if self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
-                # 位置有效，完成放置
-                self.dragging_region.is_placed = True
-                self.dragging_region = None
-                self.setCursor(Qt.CursorShape.ArrowCursor)
+                # 检查是否与其他区域重叠
+                if self.region_manager.check_overlap(self.dragging_region):
+                    # 重叠，删除区域并显示警告
+                    name = self.dragging_region.name
+                    self.region_manager.remove_region(name)
+                    self.dragging_region = None
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+                    QMessageBox.warning(self, "错误", "区域与已有区域重叠，请重新放置")
+                else:
+                    # 位置有效且不重叠，完成放置
+                    self.dragging_region.is_placed = True
+                    self.dragging_region = None
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+                
+                # 取消工具栏按钮的选中状态
+                if isinstance(self.parent(), QMainWindow):
+                    self.parent().create_region_action.setChecked(False)
             else:
-                # 位置无效，立即删除区域
+                # 位置无效，删除区域
                 name = self.dragging_region.name
                 self.region_manager.remove_region(name)
                 self.dragging_region = None
                 self.setCursor(Qt.CursorShape.ArrowCursor)
                 QMessageBox.warning(self, "错误", "区域位置无效，已删除")
+                # 取消工具栏按钮的选中状态
+                if isinstance(self.parent(), QMainWindow):
+                    self.parent().create_region_action.setChecked(False)
             self.update()
     
     def mouseMoveEvent(self, event):
@@ -213,21 +230,26 @@ class GridView(QWidget):
             new_x = max(0, min(int(max_x), int(new_x)))
             new_y = max(0, min(int(max_y), int(new_y)))
             
-            # 更新区域位置（使用整数坐标）
+            # 更新区域位置
             self.dragging_region.set_position(QPointF(new_x, new_y))
             
-            # 检查位置是否有效
-            if self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
-                self.setCursor(Qt.CursorShape.SizeAllCursor)
-            else:
+            # 检查位置是否有效和是否重叠
+            is_valid = self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows)
+            is_overlapping = self.region_manager.check_overlap(self.dragging_region)
+            
+            if not is_valid or is_overlapping:
                 self.setCursor(Qt.CursorShape.ForbiddenCursor)
+            else:
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
             
             self.update()
             
-            # 更新状态栏显示当前区域位置
+            # 更新状态栏显示
             position_text = f"区域 {self.dragging_region.name.upper()}: ({int(new_x)}, {int(new_y)})"
-            if not self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
+            if not is_valid:
                 position_text += " - 位置无效"
+            elif is_overlapping:
+                position_text += " - 与其他区域重叠"
             self.mouse_position_changed.emit(position_text)
             return
         
@@ -525,6 +547,10 @@ class GridView(QWidget):
                 self.dragging_region = region
                 self.setCursor(Qt.CursorShape.SizeAllCursor)
                 self.update()
+            else:
+                # 如果用户取消了对话框，取消按钮选中状态
+                if isinstance(self.parent(), QMainWindow):
+                    self.parent().create_region_action.setChecked(False)
         except ValueError as e:
             QMessageBox.warning(self, "错误", str(e))
             # 取消工具栏按钮的选中状态
