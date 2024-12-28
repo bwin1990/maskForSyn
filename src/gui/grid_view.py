@@ -169,35 +169,44 @@ class GridView(QWidget):
             self.is_panning = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
         elif event.button() == Qt.MouseButton.LeftButton and self.dragging_region:
-            # 先检查位置是否有效
-            if self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows):
-                # 检查是否与其他区域重叠
-                if self.region_manager.check_overlap(self.dragging_region):
-                    # 重叠，删除区域并显示警告
-                    name = self.dragging_region.name
-                    self.region_manager.remove_region(name)
-                    self.dragging_region = None
-                    self.setCursor(Qt.CursorShape.ArrowCursor)
-                    QMessageBox.warning(self, "错误", "区域与已有区域重叠，请重新放置")
-                else:
-                    # 位置有效且不重叠，完成放置
-                    self.dragging_region.is_placed = True
-                    self.dragging_region = None
-                    self.setCursor(Qt.CursorShape.ArrowCursor)
-                
-                # 取消工具栏按钮的选中状态
-                if isinstance(self.parent(), QMainWindow):
-                    self.parent().create_region_action.setChecked(False)
-            else:
-                # 位置无效，删除区域
+            print(f"\n鼠标释放前状态:")
+            print(f"  - region名称: {self.dragging_region.name}")
+            print(f"  - is_placed: {self.dragging_region.is_placed}")
+            print(f"  - manager中的is_placed: {self.region_manager.regions[self.dragging_region.name].is_placed}")
+            
+            # 检查是否与其他区域重叠
+            if self.region_manager.check_overlap(self.dragging_region):
+                # 重叠，删除区域并显示警告
                 name = self.dragging_region.name
                 self.region_manager.remove_region(name)
                 self.dragging_region = None
                 self.setCursor(Qt.CursorShape.ArrowCursor)
-                QMessageBox.warning(self, "错误", "区域位置无效，已删除")
-                # 取消工具栏按钮的选中状态
-                if isinstance(self.parent(), QMainWindow):
-                    self.parent().create_region_action.setChecked(False)
+                QMessageBox.warning(self, "错误", "区域与已有区域重叠，请重新放置")
+            else:
+                # 先更新region_manager中的状态
+                name = self.dragging_region.name
+                self.region_manager.regions[name].is_placed = True
+                # 再更新dragging_region的状态
+                self.dragging_region.is_placed = True
+                
+                print(f"\n设置is_placed后:")
+                print(f"  - region名称: {name}")
+                print(f"  - dragging_region的is_placed: {self.dragging_region.is_placed}")
+                print(f"  - manager中的is_placed: {self.region_manager.regions[name].is_placed}")
+                
+                # 清除拖动状态
+                self.dragging_region = None
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            
+            # 取消工具栏按钮的选中状态
+            if isinstance(self.parent(), QMainWindow):
+                self.parent().create_region_action.setChecked(False)
+            
+            print("\n状态更新后的所有区域:")
+            for name, region in self.region_manager.regions.items():
+                print(f"区域 {name}:")
+                print(f"  - is_placed: {region.is_placed}")
+            
             self.update()
     
     def mouseMoveEvent(self, event):
@@ -213,12 +222,16 @@ class GridView(QWidget):
         # 处理区域拖动
         if self.dragging_region:
             grid_pos = self.screen_to_grid(event.pos())
+            
+            # 首先限制grid_pos在有效范围内
+            grid_pos.setX(max(0, min(self.grid.cols, grid_pos.x())))
+            grid_pos.setY(max(0, min(self.grid.rows, grid_pos.y())))
+            
             # 计算新的中心位置（取整到最近的整数）
             center_x = round(grid_pos.x() - self.drag_offset.x())
             center_y = round(grid_pos.y() - self.drag_offset.y())
             
             # 从中心位置计算左上角位置
-            # 由于分割框大小是整数，我们需要确保左上角坐标也是整数
             new_x = round(center_x - self.dragging_region.size / 2)
             new_y = round(center_y - self.dragging_region.size / 2)
             
@@ -226,7 +239,7 @@ class GridView(QWidget):
             max_x = self.grid.cols - self.dragging_region.size
             max_y = self.grid.rows - self.dragging_region.size
             
-            # 确保位置是整数
+            # 确保位置是整数，并严格限制在有效范围内
             new_x = max(0, min(int(max_x), int(new_x)))
             new_y = max(0, min(int(max_y), int(new_y)))
             
@@ -236,6 +249,15 @@ class GridView(QWidget):
             # 检查位置是否有效和是否重叠
             is_valid = self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows)
             is_overlapping = self.region_manager.check_overlap(self.dragging_region)
+            
+            # 更新region_manager中的状态
+            name = self.dragging_region.name
+            if name in self.region_manager.regions:
+                self.region_manager.regions[name].position = self.dragging_region.position
+                self.region_manager.regions[name].is_placed = True
+            
+            # 更新dragging_region的状态
+            self.dragging_region.is_placed = True
             
             if not is_valid or is_overlapping:
                 self.setCursor(Qt.CursorShape.ForbiddenCursor)
@@ -344,7 +366,7 @@ class GridView(QWidget):
         
         if cell_size <= 2:
             # 小缩放比例下的绘制代码
-            # 计算整个点阵的边界框
+            # 计算整点阵的边界框
             left = int(self.offset.x())
             top = int(self.offset.y())
             width = int(self.grid.cols * cell_size)
@@ -431,21 +453,20 @@ class GridView(QWidget):
         if cell_size > 2:  # 只在足够大时绘制区域
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             
-            # 先绘制已完成的区域
+            # 添加调试信息
+            print("\n当前所有区域状态：")
             for name, region in self.region_manager.regions.items():
-                # 只绘制已放置且位置有效的区域
-                if region.is_placed:
-                    if region.is_valid_position(self.grid.cols, self.grid.rows):
-                        self._draw_region(painter, region)
-                    else:
-                        # 如果发现已放置的区域位置无效，立即删除
-                        self.region_manager.remove_region(name)
-                        continue
+                print(f"区域 {name}:")
+                print(f"  - 位置: ({region.position.x()}, {region.position.y()})")
+                print(f"  - 大小: {region.size}")
+                print(f"  - 是否放置: {region.is_placed}")
+                print(f"  - 位置是否有效: {region.is_valid_position(self.grid.cols, self.grid.rows)}")
             
-            # 绘制正在拖动的区域
-            if self.dragging_region:
-                is_invalid = not self.dragging_region.is_valid_position(self.grid.cols, self.grid.rows)
-                self._draw_region(painter, self.dragging_region, is_invalid=is_invalid)
+            # 绘制所有区域，包括正在拖动的和已放置的
+            for name, region in self.region_manager.regions.items():
+                if region.is_placed or (self.dragging_region and region.name == self.dragging_region.name):
+                    is_invalid = not region.is_valid_position(self.grid.cols, self.grid.rows)
+                    self._draw_region(painter, region, is_invalid=is_invalid)
     
     def _draw_region(self, painter: QPainter, region: Region, is_invalid: bool = False):
         """绘制区域"""
@@ -545,6 +566,8 @@ class GridView(QWidget):
                 grid_pos = self.screen_to_grid(center)
                 region.set_position(QPointF(grid_pos.x() - size/2, grid_pos.y() - size/2))
                 self.dragging_region = region
+                # 确保新创建的region是未放置状态
+                self.dragging_region.is_placed = False
                 self.setCursor(Qt.CursorShape.SizeAllCursor)
                 self.update()
             else:

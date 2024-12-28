@@ -27,18 +27,20 @@ class Region:
     
     def is_valid_position(self, grid_cols: int, grid_rows: int) -> bool:
         """检查区域位置是否有效（完全在点阵范围内）"""
-        # 修改边界检查逻辑
+        # 添加一个小的容差值来处理浮点数精度问题
+        epsilon = 1e-10
+        
         # 左边界检查
-        if self.position.x() < 0:
+        if self.position.x() < (0 - epsilon):
             return False
         # 上边界检查    
-        if self.position.y() < 0:
+        if self.position.y() < (0 - epsilon):
             return False
         # 右边界检查（确保整个区域都在点阵内）    
-        if self.position.x() + self.size > grid_cols:
+        if self.position.x() + self.size > (grid_cols + epsilon):
             return False
         # 下边界检查    
-        if self.position.y() + self.size > grid_rows:
+        if self.position.y() + self.size > (grid_rows + epsilon):
             return False
         
         return True 

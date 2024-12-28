@@ -30,6 +30,7 @@ class RegionManager(QObject):
         
         # 创建新区域
         region = Region(self.next_name, size)
+        region.is_placed = False  # 明确设置初始状态
         
         # 设置区域颜色
         color = QColor()
