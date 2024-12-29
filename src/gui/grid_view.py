@@ -381,7 +381,7 @@ class GridView(QWidget):
                 for col in range(visible_range.left(), visible_range.right()):
                     if (0 <= row < self.grid.rows and 
                         0 <= col < self.grid.cols and 
-                        self.grid.points[row, col] == 1):
+                        self.grid.get_point(row, col) == 1):
                         x = int(self.offset.x() + col * cell_size)
                         y = int(self.offset.y() + row * cell_size)
                         # 根据缩放比例调整点的透明度
@@ -425,7 +425,7 @@ class GridView(QWidget):
                         is_hover = (col == self.hover_pos.x() and row == self.hover_pos.y())
                         
                         # 根据状态设置颜色
-                        if self.grid.points[row, col] == 0:
+                        if self.grid.get_point(row, col) == 0:
                             color = QColor(220, 220, 220) if is_hover else QColor(255, 255, 255)
                         else:
                             color = QColor(50, 50, 50) if is_hover else QColor(0, 0, 0)
