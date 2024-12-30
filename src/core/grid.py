@@ -34,7 +34,7 @@ class Grid:
         """导出mask文件
         每个网格点占一行，按照从左到右，从上到下的顺序输出
         如果某个点被region覆盖，输出region的名称
-        如果没有被覆盖，输出"0"
+        如果没有被覆盖，输出数字0
         """
         with open(filename, 'w', encoding='utf-8') as f:
             for row in range(self.rows):
@@ -48,4 +48,4 @@ class Grid:
                             break
                     
                     if not covered:
-                        f.write("0\n") 
+                        f.write(f"{0}\n") 
