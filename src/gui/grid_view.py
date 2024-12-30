@@ -127,8 +127,8 @@ class GridView(QWidget):
             if self.dragging_region.contains_point(grid_pos):
                 # 计算区域中心点
                 region_center = QPointF(
-                    self.dragging_region.position.x() + self.dragging_region.size / 2,
-                    self.dragging_region.position.y() + self.dragging_region.size / 2
+                    self.dragging_region.position.x() + self.dragging_region.width / 2,
+                    self.dragging_region.position.y() + self.dragging_region.height / 2
                 )
                 # 计算鼠标点击位置相对于区域中心的偏移
                 self.drag_offset = QPointF(grid_pos.x() - region_center.x(),
@@ -232,12 +232,12 @@ class GridView(QWidget):
             center_y = round(grid_pos.y() - self.drag_offset.y())
             
             # 从中心位置计算左上角位置
-            new_x = round(center_x - self.dragging_region.size / 2)
-            new_y = round(center_y - self.dragging_region.size / 2)
+            new_x = round(center_x - self.dragging_region.width / 2)
+            new_y = round(center_y - self.dragging_region.height / 2)
             
             # 限制在网格范围内
-            max_x = self.grid.cols - self.dragging_region.size
-            max_y = self.grid.rows - self.dragging_region.size
+            max_x = self.grid.cols - self.dragging_region.width
+            max_y = self.grid.rows - self.dragging_region.height
             
             # 确保位置是整数，并严格限制在有效范围内
             new_x = max(0, min(int(max_x), int(new_x)))
@@ -458,7 +458,7 @@ class GridView(QWidget):
             for name, region in self.region_manager.regions.items():
                 print(f"区域 {name}:")
                 print(f"  - 位置: ({region.position.x()}, {region.position.y()})")
-                print(f"  - 大小: {region.size}")
+                print(f"  - 尺寸: {region.width}×{region.height}")
                 print(f"  - 是否放置: {region.is_placed}")
                 print(f"  - 位置是否有效: {region.is_valid_position(self.grid.cols, self.grid.rows)}")
             
@@ -559,12 +559,12 @@ class GridView(QWidget):
         try:
             dialog = RegionSizeDialog(self)
             if dialog.exec() == QDialog.DialogCode.Accepted:
-                size = dialog.get_size()
+                width, height = dialog.get_size()
                 # 创建新区域并放置在视图中心
-                region = self.region_manager.create_region(size)
+                region = self.region_manager.create_region(width, height)
                 center = self.rect().center()
                 grid_pos = self.screen_to_grid(center)
-                region.set_position(QPointF(grid_pos.x() - size/2, grid_pos.y() - size/2))
+                region.set_position(QPointF(grid_pos.x() - width/2, grid_pos.y() - height/2))
                 self.dragging_region = region
                 # 确保新创建的region是未放置状态
                 self.dragging_region.is_placed = False

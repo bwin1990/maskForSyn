@@ -15,7 +15,7 @@ class RegionManager(QObject):
         self.next_name = 'a'  # 下一个可用的区域名称
         self.used_names = set()  # 添加已使用名称的集合
         
-    def create_region(self, size: int) -> Region:
+    def create_region(self, width: int, height: int) -> Region:
         """创建新区域"""
         # 检查是否还有可用名称
         if len(self.regions) >= 26:
@@ -29,7 +29,7 @@ class RegionManager(QObject):
                 break
         
         # 创建新区域
-        region = Region(self.next_name, size)
+        region = Region(self.next_name, width, height)
         region.is_placed = False  # 明确设置初始状态
         
         # 设置区域颜色

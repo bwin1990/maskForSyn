@@ -5,9 +5,10 @@ from PyQt6.QtCore import QPointF, QRectF
 
 class Region:
     """分割区域类"""
-    def __init__(self, name: str, size: int):
+    def __init__(self, name: str, width: int, height: int):
         self.name = name
-        self.size = size  # 正方形边长
+        self.width = width   # 矩形宽度
+        self.height = height # 矩形高度
         self.position = QPointF(0, 0)  # 左上角位置
         self.color = QColor()
         self.is_placed = False  # 是否已放置
@@ -19,7 +20,7 @@ class Region:
     def get_rect(self) -> QRectF:
         """获取区域矩形"""
         return QRectF(self.position.x(), self.position.y(), 
-                     self.size, self.size)
+                     self.width, self.height)
     
     def contains_point(self, point: QPointF) -> bool:
         """检查点是否在区域内"""
@@ -37,10 +38,10 @@ class Region:
         if self.position.y() < (0 - epsilon):
             return False
         # 右边界检查（确保整个区域都在点阵内）    
-        if self.position.x() + self.size > (grid_cols + epsilon):
+        if self.position.x() + self.width > (grid_cols + epsilon):
             return False
         # 下边界检查    
-        if self.position.y() + self.size > (grid_rows + epsilon):
+        if self.position.y() + self.height > (grid_rows + epsilon):
             return False
         
         return True 
