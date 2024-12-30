@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QMainWindow, QToolBar, QPushButton, 
-                            QStatusBar, QMessageBox, QDialog, QLabel, QHBoxLayout, QWidget, QSizePolicy)
+                            QStatusBar, QMessageBox, QDialog, QLabel, QHBoxLayout, QWidget, QSizePolicy,
+                            QFileDialog)
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
 from gui.grid_view import GridView
@@ -13,33 +14,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("点阵分割工具")
         
         # 创建工具栏
-        toolbar = QToolBar()
-        self.addToolBar(toolbar)
-        
-        # 添加新建点阵按钮
-        new_grid_action = QAction("新建点阵", self)
-        new_grid_action.triggered.connect(self._create_new_grid)
-        toolbar.addAction(new_grid_action)
-        
-        toolbar.addSeparator()  # 添加分隔符
-        
-        # 添加区域操作按钮
-        create_region_action = QAction("创建区域", self)
-        create_region_action.setCheckable(True)  # 使按钮可切换
-        create_region_action.triggered.connect(self._toggle_region_creation)
-        toolbar.addAction(create_region_action)
-        self.create_region_action = create_region_action
-        
-        toolbar.addSeparator()  # 添加分隔符
-        
-        # 添加缩放按钮
-        zoom_in_action = QAction("放大", self)
-        zoom_in_action.triggered.connect(self._zoom_in)
-        toolbar.addAction(zoom_in_action)
-        
-        zoom_out_action = QAction("缩小", self)
-        zoom_out_action.triggered.connect(self._zoom_out)
-        toolbar.addAction(zoom_out_action)
+        toolbar = self._create_toolbar()
         
         # 创建状态栏
         self.statusBar = QStatusBar()
@@ -127,3 +102,53 @@ class MainWindow(QMainWindow):
     def delete_region(self, name: str):
         """删除区域"""
         self.grid_view.delete_region(name)
+    
+    def _create_toolbar(self):
+        """创建工具栏"""
+        toolbar = QToolBar()
+        self.addToolBar(toolbar)
+        
+        # 新建点阵按钮
+        new_grid_action = QAction("新建点阵", self)
+        new_grid_action.triggered.connect(self._create_new_grid)
+        toolbar.addAction(new_grid_action)
+        
+        # 添加分隔符
+        toolbar.addSeparator()
+        
+        # 创建分割框按钮
+        self.create_region_action = QAction("创建分割框", self)
+        self.create_region_action.setCheckable(True)
+        self.create_region_action.toggled.connect(self._toggle_region_creation)
+        toolbar.addAction(self.create_region_action)
+        
+        # 添加分隔符
+        toolbar.addSeparator()
+        
+        # 导出Mask按钮
+        export_mask_action = QAction("导出Mask", self)
+        export_mask_action.triggered.connect(self._export_mask)
+        toolbar.addAction(export_mask_action)
+        
+        return toolbar
+    
+    def _export_mask(self):
+        """导出mask文件"""
+        # 获取保存文件的路径
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "保存Mask文件",
+            "mask.txt",
+            "Text Files (*.txt);;All Files (*)"
+        )
+        
+        if filename:
+            try:
+                # 调用grid的导出方法
+                self.grid_view.grid.export_mask(
+                    self.grid_view.region_manager.regions,
+                    filename
+                )
+                self.statusBar.showMessage(f"Mask已成功导出到: {filename}", 3000)
+            except Exception as e:
+                QMessageBox.warning(self, "错误", f"导出Mask文件失败: {str(e)}")

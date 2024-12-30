@@ -1,4 +1,6 @@
 import numpy as np
+from typing import Dict
+from PyQt6.QtCore import QPointF
 
 class Grid:
     def __init__(self, rows: int, cols: int):
@@ -27,3 +29,23 @@ class Grid:
         converted_row = self.convert_row(row)
         if self.is_valid_point(converted_row, col):
             self.points[converted_row, col] = value 
+            
+    def export_mask(self, regions: Dict[str, 'Region'], filename: str = "mask.txt"):
+        """导出mask文件
+        每个网格点占一行，按照从左到右，从上到下的顺序输出
+        如果某个点被region覆盖，输出region的名称
+        如果没有被覆盖，输出"0"
+        """
+        with open(filename, 'w', encoding='utf-8') as f:
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    # 检查当前点是否被任何region覆盖
+                    covered = False
+                    for region in regions.values():
+                        if region.is_placed and region.contains_point(QPointF(col, row)):
+                            f.write(f"{region.name.upper()}\n")
+                            covered = True
+                            break
+                    
+                    if not covered:
+                        f.write("0\n") 
